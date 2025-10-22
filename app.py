@@ -181,7 +181,7 @@ def apply_filters(data_list, filters):
    
 # endpoint_1: create/ analyze string
 
-@app.route("/string", methods=["POST"])
+@app.route("/strings", methods=["POST"])
 def create_string():
     
     data = request.get_json(silent=True)
