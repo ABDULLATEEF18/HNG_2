@@ -184,7 +184,8 @@ def delete_string(string_id):
     # 204 No Content
     return '', 204
 
+import os
+
 if __name__ == "__main__":
-    from flask_cors import CORS
-    CORS(app)
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    port = int(os.environ.get("PORT", 8000))
+    app.run(host="0.0.0.0", port=port)
