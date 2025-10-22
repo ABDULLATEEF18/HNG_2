@@ -14,7 +14,8 @@ DATA_STORE = {}
 #@app.route("/string", methods=["POST"])
 def analyse_string(value):
     # get the hash value
-    hash_value = hashlib.sha256(value.encode()).hexdigest()
+    hash_value = hashlib.sha256(value.lower().encode()).hexdigest()
+
     # get string length
     length = len(value)
     # check if palindrome
@@ -48,9 +49,7 @@ def analyse_string(value):
 
 
 def parse_natural_language_query(query):
-    """
-    Simple, rule-based parser for natural language filtering queries.
-    """
+    
     parsed_filters = {}
     tokens = query.lower().split()
 
@@ -125,17 +124,14 @@ def parse_natural_language_query(query):
                      parsed_filters['contains_character'] = char_token
                      break
 
-    if not parsed_filters and 'all' not in query.lower():
-        # Handle case where query is too complex or non-matching
-        abort(400, description="Unable to parse natural language query into valid filters.")
-
+    if not parsed_filters:
+        parsed_filters = {}
+        
 
     return parsed_filters
 
 def apply_filters(data_list, filters):
-    """
-    Applies a dictionary of filters (from query parameters or NL parser) to a list of string records.
-    """
+    
     filtered_data = []
     
     # Cast parameters to correct types
@@ -176,7 +172,7 @@ def apply_filters(data_list, filters):
             continue
 
         # 5. contains_character filter (case-sensitive as per standard practice unless specified otherwise)
-        if f_contains_char and f_contains_char not in record['value']:
+        if f_contains_char and f_contains_char.lower() not in record['value'].lower():
             continue
             
         filtered_data.append(record)
