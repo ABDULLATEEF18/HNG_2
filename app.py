@@ -3,7 +3,7 @@ import hashlib
 from datetime import datetime
 from collections import Counter
 from flask import Flask, request, jsonify, abort
-
+import os
 # --- Configuration and In-Memory Storage ---
 app = Flask(__name__)
 app.config['JSONIFY_PRETTYPRINT_REGULAR'] = True
@@ -183,3 +183,8 @@ def delete_string(string_id):
 
     # 204 No Content
     return '', 204
+
+if __name__ == "__main__":
+    from flask_cors import CORS
+    CORS(app)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
