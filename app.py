@@ -46,6 +46,92 @@ def analyse_string(value):
            }
 # function to get filtered data.
 
+
+def parse_natural_language_query(query):
+    """
+    Simple, rule-based parser for natural language filtering queries.
+    """
+    parsed_filters = {}
+    tokens = query.lower().split()
+
+    # Palindrome Check
+    if 'palindrome' in query.lower() or 'palindromic' in query.lower():
+        if 'not' in query.lower() or 'non-palindromic' in query.lower():
+            parsed_filters['is_palindrome'] = False
+        else:
+            parsed_filters['is_palindrome'] = True
+
+    # Length Checks
+    for i, token in enumerate(tokens):
+        try:
+            # Look for number near 'longer' or 'shorter'
+            if token in ('longer', 'more', 'over', 'greater') and i + 2 < len(tokens) and tokens[i+1] == 'than':
+                length_val = int(tokens[i+2].strip('characters'))
+                # 'longer than 10' means min_length 11
+                parsed_filters['min_length'] = length_val + 1
+            elif token in ('shorter', 'less', 'under', 'fewer') and i + 2 < len(tokens) and tokens[i+1] == 'than':
+                length_val = int(tokens[i+2].strip('characters'))
+                # 'shorter than 10' means max_length 9
+                parsed_filters['max_length'] = length_val - 1
+            
+            # Check for conflicting min/max lengths
+            if (parsed_filters.get('min_length') is not None and 
+                parsed_filters.get('max_length') is not None and 
+                parsed_filters['min_length'] > parsed_filters['max_length']):
+                abort(422, description="Query parsed into conflicting length constraints.")
+
+        except ValueError:
+            # Ignore tokens that look like numbers but aren't parseable integers
+            pass
+
+    # Word Count Checks
+    if 'single word' in query.lower():
+        if 'word_count' in parsed_filters: # Check for conflict
+             abort(422, description="Query parsed into conflicting word count constraints.")
+        parsed_filters['word_count'] = 1
+    
+    if 'words' in query.lower():
+        try:
+            # Look for "X word" or "X words"
+            for i, token in enumerate(tokens):
+                if token in ('words', 'word') and i > 0:
+                    if tokens[i-1].isdigit():
+                        count = int(tokens[i-1])
+                        if count > 0:
+                            if 'word_count' in parsed_filters and parsed_filters['word_count'] != count:
+                                abort(422, description="Query parsed into conflicting word count constraints.")
+                            parsed_filters['word_count'] = count
+        except Exception:
+            pass # continue if parsing words fails
+
+    # Contains Character Check
+    # Look for "containing the letter [x]" or "contains [x]"
+    vowels = ['a', 'e', 'i', 'o', 'u']
+    
+    if 'first vowel' in query.lower():
+        parsed_filters['contains_character'] = 'a'
+    elif 'vowel' in query.lower() and not 'first vowel' in query.lower():
+        # Heuristic for ambiguous vowel, default to 'a'
+        parsed_filters['contains_character'] = 'a' 
+        
+    for i, token in enumerate(tokens): # Re-iterate to find general character containment
+        if token in ('containing', 'contains'):
+            # Look for simple single-letter constraint
+            if i + 2 < len(tokens) and tokens[i+1] in ('the', 'letter'):
+                char_token = tokens[i+2].strip('"').strip("'").strip().lower()
+                if len(char_token) == 1 and char_token.isalpha():
+                     if parsed_filters.get('contains_character') and parsed_filters['contains_character'] != char_token:
+                        abort(422, description="Query parsed into conflicting character constraints.")
+                     parsed_filters['contains_character'] = char_token
+                     break
+
+    if not parsed_filters and 'all' not in query.lower():
+        # Handle case where query is too complex or non-matching
+        abort(400, description="Unable to parse natural language query into valid filters.")
+
+
+    return parsed_filters
+
 def apply_filters(data_list, filters):
     """
     Applies a dictionary of filters (from query parameters or NL parser) to a list of string records.
@@ -166,6 +252,42 @@ def get_all_strings_with_filtering():
         "data": filtered_data,
         "count": len(filtered_data),
         "filters_applied": filters
+    }
+    return jsonify(response), 200
+
+
+
+@app.route('/strings/filter-by-natural-language', methods=['GET'])
+def natural_language_filtering():
+    query = request.args.get('query')
+    
+    if not query:
+        return jsonify({"error": "Missing 'query' parameter."}), 400
+
+    data_list = list(DATA_STORE.values())
+    
+    try:
+        # Use the rule-based parser
+        parsed_filters = parse_natural_language_query(query)
+    except Exception as e:
+        # Catches 400/422 errors thrown by the parser
+        return jsonify({"error": e.description}), e.code if hasattr(e, 'code') else 400
+
+    try:
+        filtered_data = apply_filters(data_list, parsed_filters)
+    except Exception as e:
+        # Catches casting errors from apply_filters, though less likely after NL parse
+        return jsonify({"error": e.description}), 400
+
+
+    # 200 OK
+    response = {
+        "data": filtered_data,
+        "count": len(filtered_data),
+        "interpreted_query": {
+            "original": query,
+            "parsed_filters": parsed_filters
+        }
     }
     return jsonify(response), 200
 
